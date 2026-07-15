@@ -27,6 +27,11 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=1, description="Task title, must not be empty")
 
 
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1)
+    done: bool | None = None
+
+
 @app.get("/")
 async def root():
     return {
@@ -61,3 +66,24 @@ async def create_task(task_in: TaskIn):
     tasks.append(task)
     next_id += 1
     return task
+
+
+@app.put("/tasks/{task_id}")
+async def update_task(task_id: int, task_in: TaskUpdate):
+    for task in tasks:
+        if task["id"] == task_id:
+            if task_in.title is not None:
+                task["title"] = task_in.title
+            if task_in.done is not None:
+                task["done"] = task_in.done
+            return task
+    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+
+@app.delete("/tasks/{task_id}", status_code=204)
+async def delete_task(task_id: int):
+    for i, task in enumerate(tasks):
+        if task["id"] == task_id:
+            tasks.pop(i)
+            return None
+    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
