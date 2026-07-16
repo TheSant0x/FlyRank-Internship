@@ -53,9 +53,15 @@ async def health():
 
 
 @app.get("/tasks")
-async def list_tasks():
-    """List every task in the in-memory list."""
-    return tasks
+async def list_tasks(done: bool | None = None, search: str | None = None):
+    """List tasks, optionally filtered by done status or a title search."""
+    result = tasks
+    if done is not None:
+        result = [t for t in result if t["done"] == done]
+    if search is not None:
+        needle = search.lower()
+        result = [t for t in result if needle in t["title"].lower()]
+    return result
 
 
 @app.get("/tasks/{task_id}")
@@ -98,3 +104,22 @@ async def delete_task(task_id: int):
             tasks.pop(i)
             return None
     raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+
+@app.get("/stats")
+async def stats():
+    """Return a small summary the server computed from the list."""
+    return {
+        "total": len(tasks),
+        "done": sum(1 for t in tasks if t["done"]),
+        "open": sum(1 for t in tasks if not t["done"]),
+    }
+
+
+@app.post("/reset")
+async def reset():
+    """Restore the original three example tasks."""
+    global next_id
+    tasks[:] = [task.copy() for task in seed_tasks]
+    next_id = len(tasks) + 1
+    return {"status": "reset"}
