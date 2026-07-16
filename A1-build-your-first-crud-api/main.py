@@ -3,7 +3,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-app = FastAPI()
+app = FastAPI(
+    title="Task API",
+    description="A small CRUD API that manages a to-do list. Try every endpoint here in Swagger UI.",
+    version="1.0",
+)
 
 
 @app.exception_handler(RequestValidationError)
@@ -34,6 +38,7 @@ class TaskUpdate(BaseModel):
 
 @app.get("/")
 async def root():
+    """Describe the API and list its endpoints."""
     return {
         "name": "Task API",
         "version": "1.0",
@@ -43,16 +48,19 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """Return a simple liveness signal."""
     return {"status": "ok"}
 
 
 @app.get("/tasks")
 async def list_tasks():
+    """List every task in the in-memory list."""
     return tasks
 
 
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: int):
+    """Return a single task by its id, or 404 if it does not exist."""
     for task in tasks:
         if task["id"] == task_id:
             return task
@@ -61,6 +69,7 @@ async def get_task(task_id: int):
 
 @app.post("/tasks", status_code=201)
 async def create_task(task_in: TaskIn):
+    """Create a new task. The server assigns the id and sets done to false."""
     global next_id
     task = {"id": next_id, "title": task_in.title, "done": False}
     tasks.append(task)
@@ -70,6 +79,7 @@ async def create_task(task_in: TaskIn):
 
 @app.put("/tasks/{task_id}")
 async def update_task(task_id: int, task_in: TaskUpdate):
+    """Replace a task's title and/or done flag. Unknown ids return 404."""
     for task in tasks:
         if task["id"] == task_id:
             if task_in.title is not None:
@@ -82,6 +92,7 @@ async def update_task(task_id: int, task_in: TaskUpdate):
 
 @app.delete("/tasks/{task_id}", status_code=204)
 async def delete_task(task_id: int):
+    """Remove a task. Unknown ids return 404."""
     for i, task in enumerate(tasks):
         if task["id"] == task_id:
             tasks.pop(i)
