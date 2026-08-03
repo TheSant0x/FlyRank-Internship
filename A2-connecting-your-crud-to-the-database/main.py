@@ -125,24 +125,39 @@ async def create_task(task_in: TaskIn):
 @app.put("/tasks/{task_id}")
 async def update_task(task_id: int, task_in: TaskUpdate):
     """Replace a task's title and/or done flag. Unknown ids return 404."""
-    for task in tasks:
-        if task["id"] == task_id:
-            if task_in.title is not None:
-                task["title"] = task_in.title
-            if task_in.done is not None:
-                task["done"] = task_in.done
-            return task
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    new_title = task_in.title if task_in.title is not None else None
+    new_done = task_in.done if task_in.done is not None else None
+    conn = sqlite3.connect(DB_PATH)
+    if new_title is not None and new_done is not None:
+        conn.execute(
+            "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+            (new_title, int(new_done), task_id),
+        )
+    elif new_title is not None:
+        conn.execute("UPDATE tasks SET title = ? WHERE id = ?", (new_title, task_id))
+    elif new_done is not None:
+        conn.execute("UPDATE tasks SET done = ? WHERE id = ?", (int(new_done), task_id))
+    else:
+        conn.close()
+        return JSONResponse(status_code=400, content={"error": "title or done is required"})
+    conn.commit()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "Task not found"})
+    return row_to_task(row)
 
 
 @app.delete("/tasks/{task_id}", status_code=204)
 async def delete_task(task_id: int):
     """Remove a task. Unknown ids return 404."""
-    for i, task in enumerate(tasks):
-        if task["id"] == task_id:
-            tasks.pop(i)
-            return None
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return JSONResponse(status_code=404, content={"error": "Task not found"})
+    return None
 
 
 @app.get("/stats")
