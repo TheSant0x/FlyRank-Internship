@@ -109,10 +109,16 @@ async def get_task(task_id: int):
 @app.post("/tasks", status_code=201)
 async def create_task(task_in: TaskIn):
     """Create a new task. The server assigns the id and sets done to false."""
-    global next_id
-    task = {"id": next_id, "title": task_in.title, "done": False}
-    tasks.append(task)
-    next_id += 1
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.execute(
+        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        (task_in.title, 0),
+    )
+    conn.commit()
+    task_id = cur.lastrowid
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    conn.close()
+    task = row_to_task(row)
     return task
 
 
