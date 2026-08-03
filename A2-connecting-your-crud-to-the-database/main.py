@@ -50,16 +50,6 @@ async def validation_handler(request, exc):
         content={"error": "title is required and must not be empty"},
     )
 
-seed_tasks = [
-    {"id": 1, "title": "Buy milk", "done": False},
-    {"id": 2, "title": "Call the dentist", "done": False},
-    {"id": 3, "title": "Water the plants", "done": True},
-]
-
-tasks = [task.copy() for task in seed_tasks]
-next_id = len(tasks) + 1
-
-
 class TaskIn(BaseModel):
     title: str = Field(min_length=1, description="Task title, must not be empty")
 
@@ -67,6 +57,11 @@ class TaskIn(BaseModel):
 class TaskUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1)
     done: bool | None = None
+
+
+def row_to_task(row):
+    """Convert a tasks.db row to the JSON shape the API has always returned."""
+    return {"id": row[0], "title": row[1], "done": bool(row[2])}
 
 
 @app.get("/")
@@ -88,7 +83,10 @@ async def health():
 @app.get("/tasks")
 async def list_tasks(done: bool | None = None, search: str | None = None):
     """List tasks, optionally filtered by done status or a title search."""
-    result = tasks
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    conn.close()
+    result = [row_to_task(row) for row in rows]
     if done is not None:
         result = [t for t in result if t["done"] == done]
     if search is not None:
@@ -100,10 +98,12 @@ async def list_tasks(done: bool | None = None, search: str | None = None):
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: int):
     """Return a single task by its id, or 404 if it does not exist."""
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": "Task not found"})
+    return row_to_task(row)
 
 
 @app.post("/tasks", status_code=201)
