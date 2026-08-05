@@ -6,5 +6,3 @@ venv/
 info.txt
 tasks.db
 *.db
-swagger.png
-db-browser.png
