@@ -39,3 +39,41 @@ def init_db():
                     "INSERT INTO tasks (title, done) VALUES (%s, %s)",
                     SEED_TASKS,
                 )
+
+
+def row_to_task(row):
+    """Convert a Postgres row to the JSON shape the API has always returned."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"]),
+    }
+
+
+def list_tasks(done=None, search=None, sort=None):
+    """List tasks, filtered and sorted by SQL: done status, title LIKE, ORDER BY title."""
+    query = "SELECT * FROM tasks"
+    conditions = []
+    params = []
+    if done is not None:
+        conditions.append("done = %s")
+        params.append(done)
+    if search is not None:
+        conditions.append("title ILIKE %s")
+        params.append(f"%{search}%")
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    if sort == "title":
+        query += " ORDER BY title"
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [row_to_task(row) for row in rows]
+
+
+def get_task(task_id):
+    """Return one task by id, or None when it does not exist."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM tasks WHERE id = %s", (task_id,)
+        ).fetchone()
+    return row_to_task(row) if row else None
