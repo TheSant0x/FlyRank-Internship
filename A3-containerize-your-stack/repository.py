@@ -3,6 +3,7 @@
 import os
 
 import psycopg
+import redis
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
@@ -18,6 +19,18 @@ SEED_TASKS = [
 def get_conn():
     """Open a connection using the DATABASE_URL secret from .env."""
     return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+
+
+def ping_db():
+    """Run SELECT 1 so /health can report the database is reachable."""
+    with get_conn() as conn:
+        conn.execute("SELECT 1")
+
+
+def ping_redis():
+    """PING the Redis service; real companies gate deploys on this."""
+    r = redis.Redis(host="redis", port=6379, socket_timeout=2)
+    r.ping()
 
 
 def init_db():

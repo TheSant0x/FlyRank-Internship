@@ -7,6 +7,12 @@ import repository
 
 repository.init_db()
 
+try:
+    repository.ping_redis()
+except Exception:
+    # Redis is a stretch extra; the API still starts without it.
+    pass
+
 app = FastAPI(
     title="Task API",
     description="A small CRUD API that manages a to-do list, backed by Postgres in Docker.",
@@ -35,6 +41,16 @@ class TaskUpdate(BaseModel):
 async def root():
     """Describe the API and list its endpoints."""
     return {"name": "Task API", "version": "1.0", "endpoints": ["/tasks"]}
+
+
+@app.get("/health")
+async def health():
+    """Liveness signal that also pings the database."""
+    try:
+        repository.ping_db()
+        return {"status": "ok", "db": "ok"}
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error", "db": "down"})
 
 
 @app.get("/tasks")
