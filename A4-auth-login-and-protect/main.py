@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi import Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from supabase import create_client
@@ -89,3 +90,26 @@ async def login(auth_in: AuthIn):
         "token_type": "bearer",
         "expires_in": result.session.expires_in,
     }
+
+
+@app.get("/public/info")
+async def public_info():
+    """Open, public data. No auth required."""
+    return {"message": "Welcome stranger! This info is public."}
+
+
+@app.get("/protected/profile")
+async def protected_profile(authorization: str | None = Header(default=None)):
+    """Locked door. For now we only check that a token was presented."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Access token required"},
+        )
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Access token required"},
+        )
+    return {"message": "profile works, token verification comes in Stage 3"}
