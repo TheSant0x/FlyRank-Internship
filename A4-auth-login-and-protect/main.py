@@ -3,9 +3,9 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
-from fastapi import Header
 from fastapi import Depends, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from supabase import create_client
 
@@ -21,6 +21,8 @@ app = FastAPI(
     description="A secure API with Supabase Auth: sign up, log in, log out, and protected routes.",
     version="1.0",
 )
+
+security = HTTPBearer(auto_error=False)
 
 
 @app.exception_handler(RequestValidationError)
@@ -47,11 +49,13 @@ class AuthIn(BaseModel):
     password: str = Field(min_length=1, description="Password, must not be empty")
 
 
-def require_user(authorization: str | None = Header(default=None)):
+def require_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+):
     """Reusable guard: verify the bearer token with Supabase and return the user."""
-    if not authorization or not authorization.startswith("Bearer "):
+    if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=401, detail={"error": "Access token required"})
-    token = authorization.removeprefix("Bearer ").strip()
+    token = credentials.credentials.strip()
     if not token:
         raise HTTPException(status_code=401, detail={"error": "Access token required"})
     try:
