@@ -100,7 +100,7 @@ async def public_info():
 
 @app.get("/protected/profile")
 async def protected_profile(authorization: str | None = Header(default=None)):
-    """Locked door. For now we only check that a token was presented."""
+    """Locked door. Verifies the bearer token with Supabase before opening."""
     if not authorization or not authorization.startswith("Bearer "):
         return JSONResponse(
             status_code=401,
@@ -112,4 +112,16 @@ async def protected_profile(authorization: str | None = Header(default=None)):
             status_code=401,
             content={"error": "Access token required"},
         )
-    return {"message": "profile works, token verification comes in Stage 3"}
+    try:
+        result = supabase.auth.get_user(token)
+    except Exception:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Invalid or expired token"},
+        )
+    user = result.user
+    return {
+        "id": user.id,
+        "email": user.email,
+        "created_at": user.created_at,
+    }
