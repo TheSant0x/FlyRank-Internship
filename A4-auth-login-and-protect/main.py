@@ -1,4 +1,5 @@
 import os
+import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -23,6 +24,8 @@ app = FastAPI(
 )
 
 security = HTTPBearer(auto_error=False)
+
+login_attempts = {}
 
 
 @app.exception_handler(RequestValidationError)
@@ -67,6 +70,13 @@ def require_user(
     return result.user
 
 
+def require_admin(user=Depends(require_user)):
+    """Guard for admin-only routes. 401 if unknown, 403 if known but not admin."""
+    if user.app_metadata.get("role") != "admin":
+        raise HTTPException(status_code=403, detail={"error": "Admin access required"})
+    return user
+
+
 @app.get("/")
 async def root():
     """Describe the API and list its endpoints."""
@@ -106,14 +116,46 @@ async def signup(auth_in: AuthIn):
 @app.post("/auth/login")
 async def login(auth_in: AuthIn):
     """Authenticate with Supabase and return the JWT access token plus refresh token."""
+    now = int(time.time())
+    window = login_attempts.setdefault(auth_in.email, [0, 0.0])
+    if window[0] >= 5 and now - window[1] < 60:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Too many login attempts, try again later"},
+        )
+    window[0] += 1
     try:
         result = supabase.auth.sign_in_with_password(
             {"email": auth_in.email, "password": auth_in.password}
         )
     except Exception:
+        window[1] = now
         return JSONResponse(
             status_code=401,
             content={"error": "Invalid login credentials"},
+        )
+    window[0] = 0
+    return {
+        "access_token": result.session.access_token,
+        "refresh_token": result.session.refresh_token,
+        "token_type": "bearer",
+        "expires_in": result.session.expires_in,
+    }
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str = Field(min_length=1, description="Refresh token from login")
+
+
+@app.post("/auth/refresh")
+async def refresh(refresh_in: RefreshIn):
+    """Exchange a refresh token for a fresh access token without logging in again."""
+    try:
+        result = supabase.auth.refresh_session(refresh_in.refresh_token)
+    except Exception:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Invalid refresh token"},
         )
     return {
         "access_token": result.session.access_token,
@@ -143,6 +185,12 @@ async def protected_profile(user=Depends(require_user)):
 async def protected_dashboard(user=Depends(require_user)):
     """Second protected route reusing the same guard - no new auth code."""
     return {"message": f"Welcome back, {user.email}! This is your dashboard."}
+
+
+@app.get("/protected/admin")
+async def protected_admin(user=Depends(require_admin)):
+    """Admin-only route. A logged-in non-admin gets 403, not 401."""
+    return {"message": f"Admin panel for {user.email}"}
 
 
 @app.post("/auth/logout", status_code=204)
