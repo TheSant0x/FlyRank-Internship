@@ -1,0 +1,4 @@
+requests==2.34.2
+beautifulsoup4==4.14.3
+pydantic==2.13.4
+lxml==5.3.2
