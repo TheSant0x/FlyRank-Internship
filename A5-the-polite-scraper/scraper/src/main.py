@@ -4,8 +4,10 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urljoin
 
 import requests
+from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT / "cache"
@@ -56,11 +58,62 @@ def fetch_page(url: str, cache_path: Path | None) -> dict:
     }
 
 
+def catalogue_page_url(page_number: int) -> str:
+    return f"{SITE_URL}catalogue/page-{page_number}.html"
+
+
+def discover_catalogue(max_pages: int = 3) -> dict:
+    """Follow the catalogue's own 'next' links and collect every book URL.
+
+    Returns {"catalogue_pages", "discovered", "unique_urls", "book_urls",
+    "cache_hits", "fetches"}.
+    """
+    book_urls = []
+    cache_hits = 0
+    fetches = 0
+    page_number = 1
+
+    while page_number <= max_pages:
+        url = catalogue_page_url(page_number)
+        cache_path = CACHE_DIR / f"catalogue-page-{page_number}.html"
+        result = fetch_page(url, cache_path)
+        if result["status"] == "cache":
+            cache_hits += 1
+        elif result["status"] == "fetch":
+            fetches += 1
+        else:
+            break
+
+        soup = BeautifulSoup(result["text"], "lxml")
+        for link in soup.select("article.product_pod h3 a"):
+            book_urls.append(urljoin(url, link["href"]))
+
+        next_link = soup.select_one("li.next a")
+        if next_link is None or page_number >= max_pages:
+            break
+        page_number += 1
+        if result["status"] == "fetch":
+            time.sleep(DELAY_SECONDS)
+
+    unique_urls = sorted(set(book_urls))
+    return {
+        "catalogue_pages": page_number,
+        "discovered": len(book_urls),
+        "unique_urls": len(unique_urls),
+        "book_urls": unique_urls,
+        "cache_hits": cache_hits,
+        "fetches": fetches,
+    }
+
+
 def main():
-    page_one = f"{SITE_URL}catalogue/page-1.html"
-    cache_path = CACHE_DIR / "catalogue-page-1.html"
-    result = fetch_page(page_one, cache_path)
-    print(f"{result['status'].upper()} {result['size']} bytes")
+    discovery = discover_catalogue()
+    print(
+        f"catalogue_pages={discovery['catalogue_pages']} "
+        f"discovered={discovery['discovered']} "
+        f"unique_urls={discovery['unique_urls']} "
+        f"(cache_hits={discovery['cache_hits']}, fetches={discovery['fetches']})"
+    )
     return 0
 
 
