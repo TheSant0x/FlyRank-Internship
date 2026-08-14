@@ -21,6 +21,7 @@ SITE_URL = "https://books.toscrape.com/"
 USER_AGENT = "FlyRankInternship-A9/1.0 (+https://github.com/TheSant0x/FlyRank-Internship)"
 TIMEOUT = 10
 DELAY_SECONDS = 0.5
+RETRYABLE_STATUS = {500, 502, 503, 504}
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -49,16 +50,24 @@ def fetch_page(url: str, cache_path: Path | None) -> dict:
         text = cache_path.read_text(encoding="utf-8")
         return {"status": "cache", "text": text, "size": len(text.encode()), "url": url}
 
-    try:
-        response = requests.get(
-            url,
-            headers={"User-Agent": USER_AGENT},
-            timeout=TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        return {"status": "error", "error": str(exc), "size": 0, "url": url}
+    for attempt in (1, 2):
+        try:
+            response = requests.get(
+                url,
+                headers={"User-Agent": USER_AGENT},
+                timeout=TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            if attempt == 2:
+                return {"status": "error", "error": str(exc), "size": 0, "url": url}
+            time.sleep(1)
+            continue
 
-    if response.status_code != 200:
+        if response.status_code == 200:
+            break
+        if response.status_code in RETRYABLE_STATUS and attempt == 1:
+            time.sleep(1)
+            continue
         return {
             "status": "error",
             "error": f"HTTP {response.status_code}",
@@ -204,8 +213,12 @@ def validate_and_store(records: list[dict]) -> dict:
 
 
 def collect_records(book_urls: list[str], source_pages: dict) -> dict:
-    """Fetch (or read from cache) every book page and extract its raw record."""
+    """Fetch (or read from cache) every book page and extract its raw record.
+
+    One broken page is logged and skipped; it never kills the run.
+    """
     records = []
+    failed_pages = []
     cache_hits = 0
     fetches = 0
     for product_url in book_urls:
@@ -218,16 +231,44 @@ def collect_records(book_urls: list[str], source_pages: dict) -> dict:
             fetches += 1
             time.sleep(DELAY_SECONDS)
         else:
+            failed_pages.append({"url": product_url, "error": result.get("error")})
             continue
         records.append(
             extract_book_record(
                 result["text"], product_url, source_pages.get(product_url, SITE_URL)
             )
         )
-    return {"records": records, "cache_hits": cache_hits, "fetches": fetches}
+    return {
+        "records": records,
+        "cache_hits": cache_hits,
+        "fetches": fetches,
+        "failed_pages": failed_pages,
+    }
+
+
+def write_run_report(started: float, discovery: dict, collected: dict, stored: dict) -> None:
+    """Write a few honest numbers about the run to output/run-report.json."""
+    report = {
+        "started_at": datetime.fromtimestamp(started, timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        "duration_seconds": round(time.time() - started, 2),
+        "catalogue_pages": discovery["catalogue_pages"],
+        "discovered_urls": discovery["discovered"],
+        "unique_urls": discovery["unique_urls"],
+        "pages_fetched": collected["fetches"],
+        "cache_hits": collected["cache_hits"],
+        "valid_records": stored["valid"],
+        "invalid_records": stored["invalid"],
+        "failed_pages": len(collected["failed_pages"]),
+    }
+    (OUTPUT_DIR / "run-report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
 
 
 def main():
+    started = time.time()
     discovery = discover_catalogue()
     # Map each book URL back to the catalogue page it came from.
     book_to_source = {}
@@ -242,7 +283,9 @@ def main():
         discovery["book_urls"], book_to_source
     )
     stored = validate_and_store(collected["records"])
+    write_run_report(started, discovery, collected, stored)
     print(f"stored valid={stored['valid']} invalid={stored['invalid']}")
+    print(f"failed_pages={len(collected['failed_pages'])}")
     print(f"detail_pages={len(collected['records'])} "
           f"(cache_hits={collected['cache_hits']}, fetches={collected['fetches']})")
     if collected["records"]:
