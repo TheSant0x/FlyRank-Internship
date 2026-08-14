@@ -4,12 +4,14 @@ import os
 import re
 import sys
 import time
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
+from pydantic import BaseModel, Field, ValidationError
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT / "cache"
@@ -22,6 +24,20 @@ DELAY_SECONDS = 0.5
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+class BookRecord(BaseModel):
+    """The validated shape of one finished record."""
+
+    title: str = Field(min_length=1)
+    product_url: str = Field(pattern=r"^https://")
+    price_text: str | None = None
+    price_gbp: float | None = None
+    availability_text: str | None = None
+    rating_text: str | None = None
+    description: str | None = None
+    source_page: str = Field(pattern=r"^https://")
+    fetched_at: str
 
 
 def fetch_page(url: str, cache_path: Path | None) -> dict:
@@ -148,6 +164,45 @@ def extract_book_record(html: str, product_url: str, source_page: str) -> dict:
     }
 
 
+def normalize_record(record: dict) -> dict:
+    """Turn raw strings into clean values; raw and clean live side by side."""
+    normalized = dict(record)
+    price_text = record.get("price_text")
+    try:
+        normalized["price_gbp"] = float(price_text.removeprefix("£")) if price_text else None
+    except ValueError:
+        normalized["price_gbp"] = None
+    return normalized
+
+
+def validate_and_store(records: list[dict]) -> dict:
+    """Validate every record, write books.json (deduped by canonical URL) and errors.json."""
+    seen = {}
+    errors = []
+    for record in records:
+        normalized = normalize_record(record)
+        try:
+            validated = BookRecord.model_validate(normalized)
+        except ValidationError as exc:
+            errors.append(
+                {
+                    "product_url": normalized.get("product_url"),
+                    "reason": exc.errors(),
+                }
+            )
+            continue
+        seen[validated.product_url] = validated.model_dump()
+
+    books = list(seen.values())
+    (OUTPUT_DIR / "books.json").write_text(
+        json.dumps(books, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    (OUTPUT_DIR / "errors.json").write_text(
+        json.dumps(errors, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return {"valid": len(books), "invalid": len(errors)}
+
+
 def collect_records(book_urls: list[str], source_pages: dict) -> dict:
     """Fetch (or read from cache) every book page and extract its raw record."""
     records = []
@@ -186,6 +241,8 @@ def main():
     collected = collect_records(
         discovery["book_urls"], book_to_source
     )
+    stored = validate_and_store(collected["records"])
+    print(f"stored valid={stored['valid']} invalid={stored['invalid']}")
     print(f"detail_pages={len(collected['records'])} "
           f"(cache_hits={collected['cache_hits']}, fetches={collected['fetches']})")
     if collected["records"]:
