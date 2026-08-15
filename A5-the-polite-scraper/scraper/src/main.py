@@ -5,6 +5,8 @@ import re
 import sys
 import time
 import json
+import csv
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
@@ -22,6 +24,7 @@ USER_AGENT = "FlyRankInternship-A9/1.0 (+https://github.com/TheSant0x/FlyRank-In
 TIMEOUT = 10
 DELAY_SECONDS = 0.5
 RETRYABLE_STATUS = {500, 502, 503, 504}
+MAX_RETRIES = 4
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -50,7 +53,7 @@ def fetch_page(url: str, cache_path: Path | None) -> dict:
         text = cache_path.read_text(encoding="utf-8")
         return {"status": "cache", "text": text, "size": len(text.encode()), "url": url}
 
-    for attempt in (1, 2):
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
             response = requests.get(
                 url,
@@ -58,15 +61,22 @@ def fetch_page(url: str, cache_path: Path | None) -> dict:
                 timeout=TIMEOUT,
             )
         except requests.RequestException as exc:
-            if attempt == 2:
+            if attempt == MAX_RETRIES:
                 return {"status": "error", "error": str(exc), "size": 0, "url": url}
-            time.sleep(1)
+            time.sleep(min(2 ** (attempt - 1), 8) + random.uniform(0, 0.5))
             continue
 
         if response.status_code == 200:
             break
-        if response.status_code in RETRYABLE_STATUS and attempt == 1:
-            time.sleep(1)
+        if response.status_code in RETRYABLE_STATUS and attempt < MAX_RETRIES:
+            retry_after = response.headers.get("Retry-After")
+            try:
+                wait = float(retry_after) if retry_after else None
+            except ValueError:
+                wait = None
+            if wait is None:
+                wait = min(2 ** (attempt - 1), 8) + random.uniform(0, 0.5)
+            time.sleep(wait)
             continue
         return {
             "status": "error",
@@ -212,6 +222,17 @@ def validate_and_store(records: list[dict]) -> dict:
     return {"valid": len(books), "invalid": len(errors)}
 
 
+def export_csv(books: list[dict]) -> None:
+    """Produce books.csv from the validated records (extras)."""
+    if not books:
+        return
+    fieldnames = list(books[0].keys())
+    with (OUTPUT_DIR / "books.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(books)
+
+
 def collect_records(book_urls: list[str], source_pages: dict) -> dict:
     """Fetch (or read from cache) every book page and extract its raw record.
 
@@ -283,6 +304,8 @@ def main():
         discovery["book_urls"], book_to_source
     )
     stored = validate_and_store(collected["records"])
+    books = json.loads((OUTPUT_DIR / "books.json").read_text(encoding="utf-8"))
+    export_csv(books)
     write_run_report(started, discovery, collected, stored)
     print(f"stored valid={stored['valid']} invalid={stored['invalid']}")
     print(f"failed_pages={len(collected['failed_pages'])}")
