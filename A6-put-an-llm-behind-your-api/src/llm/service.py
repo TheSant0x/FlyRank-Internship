@@ -62,6 +62,15 @@ def _call(provider, system_prompt: str, user_content: str, repair_count: int):
             _cost_log(response, repair_count)
             return response
         except (LLMTimeout, ProviderFailure) as error:
+            print(json.dumps({
+                "prompt_version": PROMPT_VERSION,
+                "model": os.getenv("LLM_MODEL", "gemma3:1b"),
+                "input_tokens": None,
+                "output_tokens": None,
+                "duration_ms": None,
+                "repair_count": repair_count,
+                "error": str(error),
+            }, sort_keys=True))
             status = getattr(error, "status_code", None)
             retryable = isinstance(error, LLMTimeout) or status == 429 or (status is not None and status >= 500)
             if not retryable or attempt == 2:
@@ -71,6 +80,10 @@ def _call(provider, system_prompt: str, user_content: str, repair_count: int):
                 delay = 2 ** attempt + random.uniform(0.11, 0.83)
             time.sleep(delay)
     raise RuntimeError("unreachable")
+
+
+def clear_cache() -> None:
+    _CACHE.clear()
 
 
 def classify(text: str, provider: OpenAICompatibleProvider | None = None) -> Classification:

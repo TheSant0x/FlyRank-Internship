@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
-from openai import APITimeoutError, APIStatusError, OpenAI
+from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 
 load_dotenv()
 
@@ -51,6 +51,8 @@ class OpenAICompatibleProvider:
             raise ProviderFailure(
                 str(error), error.status_code, _retry_after(headers.get("retry-after"))
             ) from error
+        except APIConnectionError as error:
+            raise ProviderFailure("LLM provider is unreachable") from error
         usage = response.usage
         return ModelResponse(
             content=response.choices[0].message.content or "",
