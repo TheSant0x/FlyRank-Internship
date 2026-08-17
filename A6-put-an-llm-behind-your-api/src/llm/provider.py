@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import APITimeoutError, APIStatusError, OpenAI
 
 load_dotenv()
 
@@ -13,7 +13,6 @@ class ModelResponse:
     input_tokens: int
     output_tokens: int
     duration_ms: int
-    retry_after: float | None = None
 
 class LLMTimeout(Exception):
     pass
@@ -45,14 +44,13 @@ class OpenAICompatibleProvider:
                 ],
                 temperature=0.2,
             )
-        except Exception as error:
-            status = getattr(error, "status_code", None)
-            headers = getattr(error, "response", None)
-            headers = getattr(headers, "headers", {}) or {}
-            retry_after = _retry_after(headers.get("retry-after"))
-            if error.__class__.__name__ in {"APITimeoutError", "APITimeoutError"}:
-                raise LLMTimeout("LLM request timed out") from error
-            raise ProviderFailure(str(error), status, retry_after) from error
+        except APITimeoutError as error:
+            raise LLMTimeout("LLM request timed out") from error
+        except APIStatusError as error:
+            headers = getattr(getattr(error, "response", None), "headers", {}) or {}
+            raise ProviderFailure(
+                str(error), error.status_code, _retry_after(headers.get("retry-after"))
+            ) from error
         usage = response.usage
         return ModelResponse(
             content=response.choices[0].message.content or "",
@@ -66,5 +64,5 @@ def _retry_after(value: str | None) -> float | None:
         return None
     try:
         return max(0.0, float(value))
-    except ValueError:
+    except (TypeError, ValueError):
         return None
