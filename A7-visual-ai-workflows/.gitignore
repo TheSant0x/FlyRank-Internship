@@ -1,0 +1,14 @@
+README.md
+info.txt
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+backend/__pycache__/
+server/*.js
+*.pyc
+*.tsbuildinfo
+.pytest_cache/

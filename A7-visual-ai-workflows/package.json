@@ -1,0 +1,38 @@
+{
+  "name": "flyrank-a7-visual-ai-workflows",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config frontend/vite.config.ts",
+    "build": "tsc -b frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
+    "preview": "vite preview --config frontend/vite.config.ts",
+    "server": "tsx server/index.ts",
+    "inngest": "npx inngest-cli dev -u http://127.0.0.1:3001/api/inngest",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.3.6",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "express": "4.21.2",
+    "inngest": "3.54.0",
+    "lucide-react": "0.468.0",
+    "openai": "4.77.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwind-merge": "2.5.5"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.0",
+    "@types/node": "22.10.5",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "25.0.1",
+    "tsx": "4.19.2",
+    "typescript": "5.8.3",
+    "vite": "6.0.5",
+    "vitest": "2.1.8"
+  }
+}
