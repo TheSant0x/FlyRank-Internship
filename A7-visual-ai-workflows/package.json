@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts",
-    "build": "tsc -b frontend/tsconfig.json && vite build --config frontend/vite.config.ts",
+    "build": "tsc -p frontend/tsconfig.json && tsc --noEmit -p tsconfig.server.json && vite build --config frontend/vite.config.ts",
     "preview": "vite preview --config frontend/vite.config.ts",
     "server": "tsx server/index.ts",
     "inngest": "npx inngest-cli dev -u http://127.0.0.1:3001/api/inngest",

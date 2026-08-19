@@ -18,3 +18,6 @@ export type WorkflowSnapshot = {
   nodes: DecisionNode[];
   edges: DecisionEdge[];
 };
+
+export type RunLog = { nodeId: string; label: string; decision: Branch; timestamp: string };
+export type RunState = { runId: string; status: "queued" | "running" | "completed" | "failed"; currentNodeId?: string; logs: RunLog[]; error?: string };
