@@ -35,11 +35,12 @@ export const executeWorkflow = inngest.createFunction(
     let node: WorkflowNode | undefined = startNode(input.nodes, input.edges);
     const visited = new Set<string>();
 
-    while (node && !visited.has(node.id)) {
-      const currentNode = node;
-      visited.add(currentNode.id);
-      run.currentNodeId = currentNode.id;
-      const decision = await step.run(`decide-${safeStepId(currentNode.id)}`, async () => {
+    try {
+      while (node && !visited.has(node.id)) {
+        const currentNode = node;
+        visited.add(currentNode.id);
+        run.currentNodeId = currentNode.id;
+        const decision = await step.run(`decide-${safeStepId(currentNode.id)}`, async () => {
         const response = await fetch(`${process.env.PYTHON_API_URL ?? "http://127.0.0.1:8000"}/api/decide`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -50,14 +51,20 @@ export const executeWorkflow = inngest.createFunction(
         if (body.decision !== "YES" && body.decision !== "NO") throw new Error("Decision service returned an invalid branch");
         return body.decision;
       });
-      const entry = { nodeId: currentNode.id, label: currentNode.data.label, decision, timestamp: new Date().toISOString() };
-      logs.push(entry);
-      run.logs = [...logs];
-      const edge = nextEdge(input.edges, currentNode.id, decision);
-      node = edge ? input.nodes.find((candidate) => candidate.id === edge.target) : undefined;
+        const entry = { nodeId: currentNode.id, label: currentNode.data.label, decision, timestamp: new Date().toISOString() };
+        logs.push(entry);
+        run.logs = [...logs];
+        const edge = nextEdge(input.edges, currentNode.id, decision);
+        node = edge ? input.nodes.find((candidate) => candidate.id === edge.target) : undefined;
+      }
+      run.currentNodeId = undefined;
+      run.status = "completed";
+      return { runId: input.runId, logs };
+    } catch (error) {
+      run.currentNodeId = undefined;
+      run.status = "failed";
+      run.error = error instanceof Error ? error.message : "Workflow execution failed";
+      throw error;
     }
-    run.currentNodeId = undefined;
-    run.status = "completed";
-    return { runId: input.runId, logs };
   },
 );
