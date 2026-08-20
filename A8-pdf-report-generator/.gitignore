@@ -1,0 +1,10 @@
+README.md
+info.txt
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+report.db
+reports/
+*.png
