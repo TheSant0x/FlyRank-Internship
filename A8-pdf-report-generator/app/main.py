@@ -6,13 +6,13 @@ from threading import Lock
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
 
 from .pdf import render_report
-from .storage import DB_PATH, REPORTS_DIR, find_report, initialize_reports_table, insert_report, list_reports, now
+from .storage import DB_PATH, REPORTS_DIR, find_report, find_report_created_today, initialize_reports_table, insert_report, list_reports, now, report_file_exists
 
 app = FastAPI(title="FlyRank PDF Report Generator", version="1.0.0")
 _generation_lock = Lock()
@@ -32,6 +32,10 @@ def health() -> dict[str, str]:
 @app.post("/reports", status_code=201)
 def create_report(request: ReportRequest | None = None) -> dict[str, str]:
     options = request or ReportRequest()
+    if not options.force:
+        existing = find_report_created_today()
+        if existing and report_file_exists(existing):
+            return JSONResponse(status_code=200, content={"id": existing["id"], "file": f"/reports/{existing['id']}/file"})
     report_id = uuid.uuid4().hex[:12]
     destination = REPORTS_DIR / f"sales-report-{now().date().isoformat()}-{report_id}.pdf"
     try:

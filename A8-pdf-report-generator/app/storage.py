@@ -46,6 +46,10 @@ def find_report_created_today() -> dict | None:
     return dict(row) if row else None
 
 
+def report_file_exists(report: dict) -> bool:
+    return Path(report["path"]).is_file()
+
+
 def list_reports() -> list[dict]:
     with sqlite3.connect(DB_PATH) as connection:
         connection.row_factory = sqlite3.Row
