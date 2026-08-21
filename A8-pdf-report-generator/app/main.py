@@ -46,6 +46,10 @@ def create_report(request: ReportRequest | None = None) -> dict[str, str]:
         raise HTTPException(status_code=500, detail=f"Could not generate report: {error}") from error
     return {"id": report_id, "file": f"/reports/{report_id}/file"}
 
+@app.get("/reports")
+def get_reports() -> list[dict]:
+    return [{**report, "file": f"/reports/{report['id']}/file"} for report in list_reports()]
+
 @app.get("/reports/{report_id}")
 def get_report(report_id: str) -> dict:
     report = find_report(report_id)
