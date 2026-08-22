@@ -67,7 +67,7 @@ The request-time pipeline is intentionally synchronous for this assignment. I wo
 
 ## AI vs me
 
-The generated comparison is in `ai-version/` and remains separate from the reviewed implementation.
+The generated comparison is in `ai-version/` and remains separate from the reviewed implementation. A sample `report.db`, generated PDFs, and the page-one screenshot are checked in under `reports/` for review.
 
 ### Generation prompt
 

@@ -5,6 +5,3 @@ info.txt
 __pycache__/
 .pytest_cache/
 *.pyc
-report.db
-reports/
-*.png
